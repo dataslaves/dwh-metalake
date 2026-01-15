@@ -1,0 +1,37 @@
+# Работа с Trino (Cedrus): SELECT и DESCRIBE
+
+## Требования
+- Docker Compose
+- Python 3.11+
+- Java: Temurin JDK 21  
+  Установка на macOS: `brew install temurin@21`  
+  Если после установки `java` не виден в PATH, добавьте в профиль оболочки:  
+  - zsh: `export PATH="/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home/bin:$PATH"`  
+  - или через `java_home`:  
+    `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`  
+    `export PATH="$JAVA_HOME/bin:$PATH"`
+
+## Быстрый старт
+1. Запускаем контейнеры:  
+   `docker compose up -d`  
+   После старта:
+   - Trino доступен на: http://127.0.0.1:8080
+   - MinIO консоль: http://127.0.0.1:9001 (логин/пароль: `minioadmin/minioadmin`)
+   - PostgreSQL: `localhost:5432` (логин/пароль: `ice/ice`)
+2. Создаем Python-окружение:  
+   `python -m venv .venv`  
+   `source .venv/bin/activate` (Linux/Mac) или `.venv\Scripts\activate` (Windows)
+3. Устанавливаем зависимости:  
+   `pip install --upgrade pip`  
+   `pip install -r requirements.txt`
+4. Запускаем пример:  
+   `python main.py`  
+   В консоли отобразится вывод DESCRIBE и затем строки из SELECT.
+
+## Что умеет клиент
+- SELECT-запросы: `TrinoService.execute(sql)` → `TrinoQueryResult` (поля: `columns`, `data`)
+- DESCRIBE: `TrinoService.describe(object_name)` → `list[DescribeRow]` (pydantic-модели)
+
+## Логирование
+- Уровень настраивается через `setup_logging(level=…)`: `DEBUG`, `INFO`, `WARNING`, `ERROR`
+- `DEBUG` показывает сетевые запросы, страницы, статистику выполнения и подробные логи клиента

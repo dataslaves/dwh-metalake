@@ -1,0 +1,50 @@
+services:
+  cedrus:
+    image: cr.yandex/crpjtvqf29mpabhmrf1s/cedrusdata:458-21
+    platform: linux/amd64
+    ports:
+      - "8080:8080"
+    networks:
+      - demoNet
+    volumes:
+      - $PWD/configs/dwh.properties:/etc/trino/catalog/dwh.properties
+      - $PWD/configs/config.properties:/etc/trino/config.properties
+    depends_on:
+      - pg
+      - minio
+
+  minio:
+    image: minio/minio
+    platform: linux/amd64
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    networks:
+      - demoNet
+    volumes:
+      - ./data/s3data:/data
+      - ./scripts/init_minio.sh:/docker-entrypoint-init.d/minio-init.sh
+    command: server /data --address ":9000" --console-address ":9001"
+
+  pg:
+    image: postgres:16-alpine
+    platform: linux/amd64
+    ports:
+      - "5432:5432"
+    networks:
+      - demoNet
+    environment:
+      POSTGRES_USER: "ice"
+      POSTGRES_PASSWORD: "ice"
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    volumes:
+      - ./data/pgdata:/var/lib/postgresql/data
+      - ./scripts/init_pg.sql:/docker-entrypoint-initdb.d/init.sql
+
+networks:
+  demoNet:
+    name: MyNetwork
+    driver: bridge
