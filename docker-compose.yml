@@ -8,7 +8,7 @@ services:
     ports:
       - "${CEDRUS_PORT:-6100}:8080"
     networks:
-      - metalake
+      - dwh-platform-net
     volumes:
       - $PWD/configs/dwh.properties:/etc/trino/catalog/dwh.properties
       - $PWD/configs/config.properties:/etc/trino/config.properties
@@ -34,7 +34,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-superadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-superadmin}
     networks:
-      - metalake
+      - dwh-platform-net
     volumes:
       - ./data/minio:/data
     command: server /data --address ":9000" --console-address ":9001"
@@ -54,7 +54,7 @@ services:
       mc anonymous set download local/${DWH_BUCKET:-dwh};
       "
     networks:
-      - metalake
+      - dwh-platform-net
 
   pg:
     image: postgres:16-alpine
@@ -63,7 +63,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     networks:
-      - metalake
+      - dwh-platform-net
     environment:
       POSTGRES_USER: "${POSTGRES_USER:-superadmin}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-superadmin}"
@@ -101,10 +101,9 @@ services:
       psql -h pg -U ${POSTGRES_USER:-superadmin} -d ${POSTGRES_DB:-metalake} -f /scripts/init_pg.sql;
       "
     networks:
-      - metalake
+      - dwh-platform-net
     restart: "no"
 
 networks:
-  metalake:
+  dwh-platform-net:
     driver: bridge
-    name: dwh-platform-net

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import logging
 from typing import Optional
@@ -11,8 +12,7 @@ from pydantic import BaseModel, ValidationError
 from lib.clients.metalake.exceptions import TrinoHttpError, TrinoValidationError, TrinoQueryError
 from lib.clients.metalake.models import TrinoQueryPage, TrinoQueryResult, DescribeRow
 
-
-DEFAULT_BASE = "http://127.0.0.1:8080"
+DEFAULT_BASE = os.environ.get("DEFAULT_BASE") or "http://localhost:6100"
 DEFAULT_HEADERS = {"X-Trino-User": "agent", "Content-Type": "text/plain"}
 RETRY_STATUS = {429, 502, 503, 504}
 
