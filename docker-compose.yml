@@ -1,50 +1,85 @@
 services:
   cedrus:
     image: cr.yandex/crpjtvqf29mpabhmrf1s/cedrusdata:458-21
+    env_file:
+      - .env
     platform: linux/amd64
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${CEDRUS_PORT:-6100}:8080"
     networks:
-      - demoNet
+      - metalake
     volumes:
       - $PWD/configs/dwh.properties:/etc/trino/catalog/dwh.properties
       - $PWD/configs/config.properties:/etc/trino/config.properties
     depends_on:
-      - pg
-      - minio
+      pg:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/info >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   minio:
     image: minio/minio
     platform: linux/amd64
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-superadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-superadmin}
     networks:
-      - demoNet
+      - metalake
     volumes:
-      - ./data/s3data:/data
-      - ./scripts/init_minio.sh:/docker-entrypoint-init.d/minio-init.sh
+      - ./data/minio:/data
     command: server /data --address ":9000" --console-address ":9001"
+
+  minio-init:
+    image: minio/mc
+    platform: linux/amd64
+    depends_on:
+      - minio
+    entrypoint: >-
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-superadmin} ${MINIO_ROOT_PASSWORD:-superadmin}; do
+        echo 'Waiting for MinIO...';
+        sleep 2;
+      done;
+      mc mb --ignore-existing local/${DWH_BUCKET:-dwh};
+      mc anonymous set download local/${DWH_BUCKET:-dwh};
+      "
+    networks:
+      - metalake
 
   pg:
     image: postgres:16-alpine
     platform: linux/amd64
+    restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     networks:
-      - demoNet
+      - metalake
     environment:
-      POSTGRES_USER: "ice"
-      POSTGRES_PASSWORD: "ice"
+      POSTGRES_USER: "${POSTGRES_USER:-superadmin}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-superadmin}"
+      POSTGRES_DB: "${POSTGRES_DB:-metalake}"
       PGDATA: "/var/lib/postgresql/data/pgdata"
     volumes:
-      - ./data/pgdata:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
       - ./scripts/init_pg.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-superadmin} -d ${POSTGRES_DB:-metalake} -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
-  demoNet:
-    name: MyNetwork
-    driver: bridge
+  metalake:
+    external: true
+    name: dwh-platform-net

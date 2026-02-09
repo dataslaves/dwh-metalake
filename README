@@ -12,19 +12,19 @@
     `export PATH="$JAVA_HOME/bin:$PATH"`
 
 ## Быстрый старт
-1. Запускаем контейнеры:  
+1. Подготовка `.env`: скопируйте `.env.example` в `.env` и при необходимости поправьте порты/логины/пароли. По умолчанию в `.env`: Trino наружу 6100, MinIO 6110/6111 (креды `superadmin/superadmin`), Postgres 6120 (`superadmin/superadmin`).
+2. Запускаем контейнеры:  
    `docker compose up -d`  
-   После старта:
-   - Trino доступен на: http://127.0.0.1:8080
-   - MinIO консоль: http://127.0.0.1:9001 (логин/пароль: `minioadmin/minioadmin`)
-   - PostgreSQL: `localhost:5432` (логин/пароль: `ice/ice`)
-2. Создаем Python-окружение:  
+   Данные пишутся в `./data/minio` и `./data/postgres`. Сеть создается как `dwh-platform-net`.
+   При первом старте Postgres инициализирует базу `metalake` и таблицы Iceberg метаданных (скрипт `scripts/init_pg.sql`).
+   MinIO инициализируется сервисом `minio-init` (minio/mc) и создаёт бакет `${DWH_BUCKET:-dwh}` автоматически.
+3. Создаем Python-окружение:  
    `python -m venv .venv`  
    `source .venv/bin/activate` (Linux/Mac) или `.venv\Scripts\activate` (Windows)
-3. Устанавливаем зависимости:  
+4. Устанавливаем зависимости:  
    `pip install --upgrade pip`  
    `pip install -r requirements.txt`
-4. Запускаем пример:  
+5. Запускаем пример:  
    `python main.py`  
    В консоли отобразится вывод DESCRIBE и затем строки из SELECT.
 
@@ -35,3 +35,10 @@
 ## Логирование
 - Уровень настраивается через `setup_logging(level=…)`: `DEBUG`, `INFO`, `WARNING`, `ERROR`
 - `DEBUG` показывает сетевые запросы, страницы, статистику выполнения и подробные логи клиента
+
+## Конфигурация Trino
+- Файлы `configs/config.properties` и `configs/dwh.properties` используют встроенную подстановку переменных Trino вида `${ENV:VAR}`.
+- Значения берутся из окружения контейнера (заданы в `.env` и проброшены через `docker-compose.yml`).
+- Никакой дополнительной генерации конфигов не требуется: Trino сам подставит значения при старте.
+
+Примечание по Postgres: скрипт `scripts/init_pg.sql` выполняется только при первичной инициализации volume `./data/postgres`. Если вы меняли volume или чистили данные, убедитесь, что база `metalake` существует, либо выполните команды из скрипта вручную.
