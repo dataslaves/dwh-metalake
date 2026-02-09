@@ -1,6 +1,3 @@
-CREATE DATABASE metalake;
-\connect metalake
-
 CREATE TABLE IF NOT EXISTS iceberg_tables(
   catalog_name VARCHAR(255) NOT NULL,
   table_namespace VARCHAR(255) NOT NULL,
