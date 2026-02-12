@@ -10,8 +10,8 @@ services:
     networks:
       - dwh-platform-net
     volumes:
-      - $PWD/configs/dwh.properties:/etc/trino/catalog/dwh.properties
-      - $PWD/configs/config.properties:/etc/trino/config.properties
+      - ./configs/dwh.properties:/etc/trino/catalog/dwh.properties
+      - ./configs/config.properties:/etc/trino/config.properties
     depends_on:
       pg:
         condition: service_healthy
@@ -106,4 +106,5 @@ services:
 
 networks:
   dwh-platform-net:
+    name: dwh-platform-net
     driver: bridge
