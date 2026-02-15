@@ -10,7 +10,10 @@
   1) Скопируйте `.env.example` в `.env` и при необходимости поменяйте порты/креды (по умолчанию: Trino 6100, MinIO 6110/6111 `superadmin/superadmin`, Postgres 6120 `superadmin/superadmin`).
   2) `docker compose up -d`. Сеть внутри Compose — `metalake`, фактическое имя в Docker — `dwh-platform-net`.
 
-- TPCH в образе Cedrus: предустановлен каталог `tpch` со сэмплами различных скейлов для быстрых проверок без подготовки данных. Пример таблицы — `tpch.sf1.customer` (используется в примере клиента). Для работы с Iceberg-данными используйте каталог `dwh`.
+- TPCH/TPCDS в образе Cedrus: предустановлены каталоги `tpch` и `tpcds` со схемами `sf1`, `sf10`, `sf100`, `sf1000`, `sf10000`, `sf1000000`, `sf300`, `sf3000`, `sf30000`, `tiny` — можно сразу выполнять запросы без загрузки данных.
+  - Разница: `tpch` — классический набор ad-hoc аналитики (джойны, агрегаты); `tpcds` — более сложная модель ритейла с сотнями таблиц и разнообразными OLAP-паттернами.
+  - Scale factor: `sf1` ≈ 1 GB нежатых данных, `sf10` ≈ 10 GB, `sf100` ≈ 100 GB и т.д.; `tiny` — минимальный учебный размер. Для TPC-DS порядок сопоставим.
+  - Пример таблицы — `tpch.sf1.customer` (используется в примере клиента). Для работы с Iceberg-данными используйте каталог `dwh`.
 
 - Веб-интерфейсы (localhost):
   - Trino/Cedrus: `http://localhost:6100` (REST API; UI минимальный, для запросов используйте клиента или DBeaver).
@@ -27,12 +30,11 @@
   - `TrinoService.execute(sql)` → `TrinoQueryResult` (`columns`, `data`).
   - `TrinoService.describe(object_name)` → `list[DescribeRow]`.
 - Пример использования: `main.py` — делает `DESCRIBE tpch.sf1.customer` и `SELECT * FROM tpch.sf1.customer LIMIT 5`.
-- Запуск примеров (после `docker compose up -d`):
-  ```bash
-  python -m venv .venv && source .venv/bin/activate
-  pip install -r requirements.txt
-  python main.py
-  ```
+- Шаги запуска Python-клиента (после `docker compose up -d`):
+  1) Создайте окружение и активируйте: `python -m venv .venv && source .venv/bin/activate`.
+  2) Установите зависимости: `pip install -r requirements.txt`.
+  3) Запустите пример: `python main.py`.
+  4) При необходимости переопределите базовый URL: `DEFAULT_BASE=http://localhost:6100 python main.py` (по умолчанию `http://localhost:6100`, заголовок пользователя — `X-Trino-User: agent`).
 - Логирование: через `setup_logging(level=INFO|DEBUG|WARNING|ERROR)`; уровень `DEBUG` показывает сетевые вызовы и статистику страниц/результатов.
 
 Postgres выполняет `scripts/init_pg.sql` только при первичной инициализации volume `./data/postgres`. Если чистили данные, убедитесь, что база `metalake` и объекты Iceberg созданы (при необходимости повторите скрипт).
