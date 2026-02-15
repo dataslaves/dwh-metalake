@@ -22,7 +22,7 @@
   - Catalog: `dwh` (Iceberg), Schema: `default` или нужный namespace.
   - Тестируйте запросом: `SELECT * FROM "dwh"."default"."<table>" LIMIT 5;` или встроенный `tpch.sf1.customer` (если есть каталог tpch).
 
-## Python-клиент и примеры
+## Python-клиент
 - Код клиента: `lib/clients/metalake` (HTTP-клиент aiohttp + модели pydantic). Методы:
   - `TrinoService.execute(sql)` → `TrinoQueryResult` (`columns`, `data`).
   - `TrinoService.describe(object_name)` → `list[DescribeRow]`.
