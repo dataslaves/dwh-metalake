@@ -53,36 +53,48 @@ class TrinoHttpClient:
         self.max_retries = max_retries
         self.backoff_base_ms = backoff_base_ms
         self.logger = logger or logging.getLogger(__name__)
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _ensure_session(self) -> aiohttp.ClientSession:
+        if self._session is not None and not self._session.closed:
+            return self._session
+        timeout_obj = aiohttp.ClientTimeout(total=self.timeout_seconds)
+        self._session = aiohttp.ClientSession(timeout=timeout_obj)
+        return self._session
+
+    async def close(self) -> None:
+        if self._session:
+            await self._session.close()
+            self._session = None
 
     async def _request_json(self, method: str, url: str, data: Optional[str] = None) -> dict:
-        timeout_obj = aiohttp.ClientTimeout(total=self.timeout_seconds)
+        session = await self._ensure_session()
         start = time.time()
-        async with aiohttp.ClientSession(timeout=timeout_obj) as session:
+        doc, status, reason, retry_after = await self._fetch_json(session, method, url, self.headers, data)
+        retries = 0
+        while status in RETRY_STATUS and retries < self.max_retries:
+            delay_ms = self.backoff_base_ms * (2 ** retries)
+            if retry_after:
+                try:
+                    delay_ms = int(float(retry_after) * 1000)
+                except Exception:
+                    pass
+            self.logger.debug(
+                "Retry %s %s %d/%d after %dms (status %d)",
+                method, url, retries + 1, self.max_retries, delay_ms, status
+            )
+            await asyncio.sleep(delay_ms / 1000.0)
             doc, status, reason, retry_after = await self._fetch_json(session, method, url, self.headers, data)
-            retries = 0
-            while status in RETRY_STATUS and retries < self.max_retries:
-                delay_ms = self.backoff_base_ms * (2 ** retries)
-                if retry_after:
-                    try:
-                        delay_ms = int(float(retry_after) * 1000)
-                    except Exception:
-                        pass
-                self.logger.debug(
-                    "Retry %s %s %d/%d after %dms (status %d)",
-                    method, url, retries + 1, self.max_retries, delay_ms, status
-                )
-                await asyncio.sleep(delay_ms / 1000.0)
-                doc, status, reason, retry_after = await self._fetch_json(session, method, url, self.headers, data)
-                retries += 1
+            retries += 1
 
-            elapsed = time.time() - start
-            self.logger.debug("%s %s -> %d %s in %.3fs", method, url, status, reason, elapsed)
+        elapsed = time.time() - start
+        self.logger.debug("%s %s -> %d %s in %.3fs", method, url, status, reason, elapsed)
 
-            if status >= 400 and status not in {200}:
-                preview = doc.get("_raw", "")
-                raise TrinoHttpError(method, url, status, reason, preview[:200])
+        if status >= 400 and status not in {200}:
+            preview = doc.get("_raw", "")
+            raise TrinoHttpError(method, url, status, reason, preview[:200])
 
-            return doc
+        return doc
 
     @staticmethod
     async def _fetch_json(
@@ -117,6 +129,9 @@ class TrinoStatementRunner:
     def __init__(self, client: TrinoHttpClient, logger: Optional[logging.Logger] = None):
         self.client = client
         self.logger = logger or client.logger
+
+    async def close(self) -> None:
+        await self.client.close()
 
     async def run(self, sql: str) -> TrinoQueryResult:
         doc = await self.client.post_statement(sql)
@@ -201,3 +216,6 @@ class TrinoService:
 
         self.logger.debug("Parsed %d describe rows", len(rows))
         return rows
+
+    async def close(self) -> None:
+        await self.runner.close()

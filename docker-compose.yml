@@ -4,14 +4,19 @@ services:
     env_file:
       - .env
     platform: linux/amd64
+    cpus: 6
+    mem_limit: 9g
+    mem_reservation: 5g
     restart: unless-stopped
     ports:
       - "${CEDRUS_PORT:-6100}:8080"
     networks:
-      - dwh-platform-net
+      - metalake
     volumes:
       - ./configs/dwh.properties:/etc/trino/catalog/dwh.properties
       - ./configs/config.properties:/etc/trino/config.properties
+      - ./configs/jvm.config:/etc/trino/jvm.config
+      - ./data/cedrus-spill:/var/trino/spill
     depends_on:
       pg:
         condition: service_healthy
@@ -27,6 +32,16 @@ services:
   minio:
     image: minio/minio
     platform: linux/amd64
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    cpus: 1
+    mem_limit: 1536m
+    mem_reservation: 1g
     ports:
       - "${MINIO_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -34,7 +49,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-superadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-superadmin}
     networks:
-      - dwh-platform-net
+      - metalake
     volumes:
       - ./data/minio:/data
     command: server /data --address ":9000" --console-address ":9001"
@@ -54,16 +69,31 @@ services:
       mc anonymous set download local/${DWH_BUCKET:-dwh};
       "
     networks:
-      - dwh-platform-net
+      - metalake
 
   pg:
     image: postgres:16-alpine
     platform: linux/amd64
+    cpus: 2
+    mem_limit: 2048m
+    mem_reservation: 1g
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "work_mem=64MB"
+      - "-c"
+      - "effective_cache_size=2GB"
+      - "-c"
+      - "checkpoint_timeout=10min"
+      - "-c"
+      - "max_wal_size=1GB"
     restart: unless-stopped
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     networks:
-      - dwh-platform-net
+      - metalake
     environment:
       POSTGRES_USER: "${POSTGRES_USER:-superadmin}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-superadmin}"
@@ -101,10 +131,10 @@ services:
       psql -h pg -U ${POSTGRES_USER:-superadmin} -d ${POSTGRES_DB:-metalake} -f /scripts/init_pg.sql;
       "
     networks:
-      - dwh-platform-net
+      - metalake
     restart: "no"
 
 networks:
-  dwh-platform-net:
+  metalake:
     name: dwh-platform-net
     driver: bridge

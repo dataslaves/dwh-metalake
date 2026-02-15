@@ -1,44 +1,36 @@
-# Работа с Trino (Cedrus): SELECT и DESCRIBE
+# Локальный стенд Trino (Cedrus) + Iceberg
 
-## Требования
+Набор контейнеров Trino/Cedrus, MinIO и Postgres для работы с Iceberg-таблицами и простым Python-клиентом.
+
+## Что нужно
 - Docker Compose
 - Python 3.11+
-- Java: Temurin JDK 21  
-  Установка на macOS: `brew install temurin@21`  
-  Если после установки `java` не виден в PATH, добавьте в профиль оболочки:  
-  - zsh: `export PATH="/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home/bin:$PATH"`  
-  - или через `java_home`:  
-    `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`  
-    `export PATH="$JAVA_HOME/bin:$PATH"`
+- Java 21 (Temurin: `brew install temurin@21`). Если `java` не виден, добавьте в профиль `export JAVA_HOME=$(/usr/libexec/java_home -v 21); export PATH="$JAVA_HOME/bin:$PATH"`.
 
-## Быстрый старт
-1. Подготовка `.env`: скопируйте `.env.example` в `.env` и при необходимости поправьте порты/логины/пароли. По умолчанию в `.env`: Trino наружу 6100, MinIO 6110/6111 (креды `superadmin/superadmin`), Postgres 6120 (`superadmin/superadmin`).
-2. Запускаем контейнеры:  
-   `docker compose up -d`  
-   Данные пишутся в `./data/minio` и `./data/postgres`. Сеть создается как `dwh-platform-net`.
-   При первом старте Postgres инициализирует базу `metalake` и таблицы Iceberg метаданных (скрипт `scripts/init_pg.sql`).
-   MinIO инициализируется сервисом `minio-init` (minio/mc) и создаёт бакет `${DWH_BUCKET:-dwh}` автоматически.
-3. Создаем Python-окружение:  
-   `python -m venv .venv`  
-   `source .venv/bin/activate` (Linux/Mac) или `.venv\Scripts\activate` (Windows)
-4. Устанавливаем зависимости:  
-   `pip install --upgrade pip`  
-   `pip install -r requirements.txt`
-5. Запускаем пример:  
-   `python main.py`  
-   В консоли отобразится вывод DESCRIBE и затем строки из SELECT.
+## Запуск
+1. Скопируйте `.env.example` в `.env` и при необходимости поменяйте порты/креды. По умолчанию: Trino 6100, MinIO 6110/6111 (`superadmin/superadmin`), Postgres 6120 (`superadmin/superadmin`).
+2. Поднимите сервисы: `docker compose up -d`. Данные лежат в `./data/minio` и `./data/postgres`. В Compose сеть называется `metalake`, фактическое имя в Docker — `dwh-platform-net`.
+3. Создайте venv: `python -m venv .venv && source .venv/bin/activate` (Windows: `.venv\Scripts\activate`).
+4. Установите зависимости: `pip install --upgrade pip && pip install -r requirements.txt`.
+5. Запустите пример: `python main.py` — увидите DESCRIBE и выборку из Iceberg.
 
-## Что умеет клиент
-- SELECT-запросы: `TrinoService.execute(sql)` → `TrinoQueryResult` (поля: `columns`, `data`)
-- DESCRIBE: `TrinoService.describe(object_name)` → `list[DescribeRow]` (pydantic-модели)
+## Рекомендованные ресурсы (под Docker Desktop 10 CPU / 12 GB RAM)
+- Cedrus/Trino: `cpus: 6`, `mem_limit: 9g`, `mem_reservation: 5g`. Heap в `configs/jvm.config`: `-Xmx7G`, `-Xms7G`.
+- Trino memory (`configs/config.properties`): `query.max-memory=5GB`, `query.max-memory-per-node=4GB`, `memory.heap-headroom-per-node=1GB`, `task.concurrency=8`.
+- Postgres: `cpus: 2`, `mem_limit: 2g`, `mem_reservation: 1g`; базовые параметры заданы в `docker-compose.yml` (`shared_buffers`, `work_mem`, `effective_cache_size`, `checkpoint_timeout`, `max_wal_size`).
+- MinIO: `cpus: 1`, `mem_limit: 1536m`, `mem_reservation: 1g` — хватит для тестов; при высокой загрузке увеличивайте до 2 CPU / 3–4 GB.
+- Spill Trino: volume `./data/cedrus-spill` → `/var/trino/spill`; следите за диском хоста. При активных мелких запросах можно переключить на быстрый диск или tmpfs.
 
-## Логирование
-- Уровень настраивается через `setup_logging(level=…)`: `DEBUG`, `INFO`, `WARNING`, `ERROR`
-- `DEBUG` показывает сетевые запросы, страницы, статистику выполнения и подробные логи клиента
+## Клиент
+- `TrinoService.execute(sql)` возвращает `TrinoQueryResult` с `columns` и `data`.
+- `TrinoService.describe(object_name)` возвращает список `DescribeRow` (pydantic).
 
-## Конфигурация Trino
-- Файлы `configs/config.properties` и `configs/dwh.properties` используют встроенную подстановку переменных Trino вида `${ENV:VAR}`.
-- Значения берутся из окружения контейнера (заданы в `.env` и проброшены через `docker-compose.yml`).
-- Никакой дополнительной генерации конфигов не требуется: Trino сам подставит значения при старте.
+## Логи
+- `setup_logging(level=INFO|DEBUG|WARNING|ERROR)`.
+- `DEBUG` включает сетевые вызовы и статистику выполнения.
 
-Примечание по Postgres: скрипт `scripts/init_pg.sql` выполняется только при первичной инициализации volume `./data/postgres`. Если вы меняли volume или чистили данные, убедитесь, что база `metalake` существует, либо выполните команды из скрипта вручную.
+## Конфиги Trino
+- `configs/config.properties` и `configs/dwh.properties` используют подстановку `${ENV:VAR}` из окружения контейнера (значения берутся из `.env`).
+- Дополнительная генерация файлов не требуется — Trino сам подставляет значения при старте.
+
+Postgres запускает `scripts/init_pg.sql` только при первой инициализации volume `./data/postgres`. После очистки данных убедитесь, что база `metalake` и объекты Iceberg созданы (повторите скрипт при необходимости).

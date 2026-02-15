@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.DS_Store
+*.log
+
+# Data volumes
+data/
+
+# Git
+.git/

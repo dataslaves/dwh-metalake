@@ -44,6 +44,8 @@ async def main() -> None:
 
     except Exception as e:
         logger.exception("Operation failed: %s", e)
+    finally:
+        await service.close()
 
 
 if __name__ == "__main__":
