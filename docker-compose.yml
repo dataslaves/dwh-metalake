@@ -16,7 +16,11 @@ services:
       - ./configs/dwh.properties:/etc/trino/catalog/dwh.properties
       - ./configs/config.properties:/etc/trino/config.properties
       - ./configs/jvm.config:/etc/trino/jvm.config
+      - ./configs/event-listener.properties:/etc/trino/event-listener.properties
       - ./data/cedrus-spill:/var/trino/spill
+    environment:
+      KAFKA_BROKER_ENDPOINTS: ${KAFKA_BROKER_ENDPOINTS:-kafka:9092}
+      ENVIRONMENT: ${ENVIRONMENT:-docker}
     depends_on:
       pg:
         condition: service_healthy
@@ -51,8 +55,60 @@ services:
     networks:
       - metalake
     volumes:
-      - ./data/minio:/data
+      - ${DATA_ROOT:-./data}/minio:/data
     command: server /data --address ":9000" --console-address ":9001"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    platform: linux/amd64
+    restart: unless-stopped
+    cpus: 2
+    mem_limit: 2048m
+    mem_reservation: 1g
+    ports:
+      - "${KAFKA_PORT:-6130}:9092"
+    environment:
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: ${KAFKA_NODE_ID:-1}
+      KAFKA_CONTROLLER_QUORUM_VOTERS: ${KAFKA_NODE_ID:-1}@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}
+      KAFKA_CLUSTER_ID: ${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - metalake
+    volumes:
+      - ${DATA_ROOT:-./data}/kafka:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "${KAFKA_UI_PORT:-6131}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: PLAINTEXT
+      KAFKA_CLUSTERS_0_READONLY: "false"
+    networks:
+      - metalake
 
   minio-init:
     image: minio/mc
@@ -100,7 +156,7 @@ services:
       POSTGRES_DB: "${POSTGRES_DB:-metalake}"
       PGDATA: "/var/lib/postgresql/data/pgdata"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ${DATA_ROOT:-./data}/postgres:/var/lib/postgresql/data
       - ./scripts/init_pg.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-superadmin} -d ${POSTGRES_DB:-metalake} -h localhost"]
